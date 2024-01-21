@@ -13,14 +13,30 @@ impl ActivationFunction {
             ActivationFunction::ReLU => relu(input),
         }
     }
+
+    fn derivative(&self, input: f64) -> f64 {
+        match self {
+            ActivationFunction::Sigmoid => d_sigmoid(input),
+            ActivationFunction::ReLU => d_relu(input),
+        }
+    }
 }
 
 fn sigmoid(input: f64) -> f64 {
     1.0 / (1.0 + (-input).exp())
 }
 
+fn d_sigmoid(input: f64) -> f64 {
+    let intermediate = sigmoid(input);
+    intermediate * (1.0 - intermediate)
+}
+
 fn relu(input: f64) -> f64 {
     input.max(0.0)
+}
+
+fn d_relu(input: f64) -> f64 {
+    (input >= 0.0) as i64 as f64
 }
 
 #[derive(Debug)]
@@ -35,9 +51,7 @@ impl Layer {
         output_size: usize,
         activation_function: ActivationFunction,
     ) -> Layer {
-        let neurons = (0..output_size)
-            .map(|_| Neuron::new(input_size))
-            .collect();
+        let neurons = (0..output_size).map(|_| Neuron::new(input_size)).collect();
         Layer {
             neurons,
             activation_function,
@@ -66,8 +80,33 @@ impl Layer {
         self.neurons.len()
     }
 
+    pub fn update_weights(&self, inputs: &[f64], deltas: &[f64], learning_rate: f64) {
+        self.neurons.iter().enumerate().map(|(i, neuron)| {
+            let gradient = inputs[i] * deltas[i];
+            neuron.update_weights(gradient, learning_rate);
+        }).collect()
+    }
+
+    pub fn update_bias(&self, deltas: &[f64], learning_rate: f64) {
+        for (neuron, &delta) in self.neurons.iter_mut().zip(deltas.iter()) {
+            neuron.update_bias(delta, learning_rate);
+        }
+    }
+
+    pub fn get_deltas_for_previous_layer(&self, activations: &[f64], deltas: &[f64]) -> Vec<f64> {
+        self.neurons.iter().map(|neuron| {
+            neuron.weights.iter().zip(deltas.iter())
+                .map(|(&weight, &delta)| weight * delta)
+                .sum::<f64>() * derivative_of_activation_function(neuron.output)
+        }).collect()
+    }
+
     #[cfg(test)]
-    pub fn new_mock(input_size: usize, output_size: usize, activation_function: ActivationFunction) -> Layer {
+    pub fn new_mock(
+        input_size: usize,
+        output_size: usize,
+        activation_function: ActivationFunction,
+    ) -> Layer {
         let neurons = (0..output_size)
             .map(|_| Neuron::new_mock(input_size))
             .collect();
@@ -76,7 +115,6 @@ impl Layer {
             activation_function,
         }
     }
-
 }
 
 #[cfg(test)]
